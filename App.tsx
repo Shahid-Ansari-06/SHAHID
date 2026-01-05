@@ -106,7 +106,7 @@ export default function App() {
     setAuthError(null);
     try {
       const client = (window as any).google?.accounts?.oauth2?.initTokenClient({
-        client_id: '1018368080946-t236rel6stk4m93cvjhpb8cikp1dstvd.apps.googleusercontent.com',
+        client_id: '1018368080946-6q4mmut7u3ba0hdmbb8iht39mgae42tp.apps.googleusercontent.com',
         scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
         callback: (tokenResponse: any) => {
           if (tokenResponse?.access_token) {
