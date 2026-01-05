@@ -1,0 +1,8 @@
+{
+  "name": "YouTube Channel Showcase Pro",
+  "description": "A high-performance, responsive YouTube channel portfolio and viewer featuring real-time data fetching, AI-powered video summaries, and a modern aesthetic.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
