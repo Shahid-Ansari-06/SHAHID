@@ -4,56 +4,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creator Portfolio | Showcase</title>
+    <title>Creator Portfolio | Editorial Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #050505;
+            --accent: #ccff00; /* Electric Lime */
+            --bg: #0a0a0a;
         }
         body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background-color: var(--bg-color);
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
             color: #ffffff;
             overflow-x: hidden;
             scroll-behavior: smooth;
         }
-        h1, h2, h3, .font-heading {
-            font-family: 'Space Grotesk', sans-serif;
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #050505;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #1a1a1a;
-            border-radius: 10px;
-            border: 2px solid #050505;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #dc2626;
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.05);
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(220, 38, 38, 0.3);
-        }
+        .font-display { font-family: 'Space Grotesk', sans-serif; }
+        .font-serif { font-family: 'Instrument Serif', serif; }
         
-        /* Animations */
-        @keyframes subtle-zoom {
-            from { transform: scale(1); }
-            to { transform: scale(1.05); }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* Smooth reveal animations */
+        .reveal { opacity: 0; transform: translateY(20px); transition: all 0.8s cubic-bezier(0.2, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        
+        /* Custom UI Elements */
+        .btn-lime {
+            background-color: var(--accent);
+            color: #000;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.3s ease;
         }
-        .animate-subtle-zoom {
-            animation: subtle-zoom 20s infinite alternate ease-in-out;
+        .btn-lime:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(204, 255, 0, 0.3);
         }
     </style>
 <script type="importmap">

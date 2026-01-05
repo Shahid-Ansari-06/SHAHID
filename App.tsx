@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Play, 
   ThumbsUp, 
@@ -15,8 +15,11 @@ import {
   Bell,
   Heart,
   LogIn,
-  LogOut,
-  User
+  User,
+  ArrowUpRight,
+  Monitor,
+  Menu,
+  X as CloseIcon
 } from 'lucide-react';
 import { YouTubeChannel, YouTubeVideo, TabType } from './types';
 import { YouTubeService } from './services/youtubeService';
@@ -24,7 +27,6 @@ import { formatCount } from './components/Formatters';
 import { VideoCard } from './components/VideoCard';
 import { VideoModal } from './components/VideoModal';
 
-// Using the provided API Key
 const YOUTUBE_API_KEY = "AIzaSyBS-Wa-CrRby-6yz7mqHtCu4-kSetzhsGA"; 
 const PERSONAL_CHANNEL_ID = 'UCrZ9NaztjEVJXLtWENlvAJA';
 
@@ -36,7 +38,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Auth State
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -56,11 +58,11 @@ export default function App() {
         service.getChannelDetails(PERSONAL_CHANNEL_ID),
         service.getVideos(PERSONAL_CHANNEL_ID, 50)
       ]);
-      
       setChannel(details);
       setVideos(vids);
     } catch (err: any) {
-      setError(err.message || 'Failed to load portfolio. Please check your API configuration.');
+      console.error("Fetch error:", err);
+      setError('Failed to sync with YouTube. Check API Key or Channel ID.');
     } finally {
       setLoading(false);
     }
@@ -68,58 +70,60 @@ export default function App() {
 
   useEffect(() => {
     loadChannelData();
-    const handleScroll = () => setScrolled(window.scrollY > 80);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
   }, [loadChannelData]);
 
-  // Handle Google Login
-  const handleGoogleLogin = () => {
-    // Note: In a real production app, client_id must be registered for the domain.
-    // For this environment, we provide the logic flow.
-    const client = (window as any).google?.accounts?.oauth2?.initTokenClient({
-      client_id: '1018368080946-t236rel6stk4m93cvjhpb8cikp1dstvd.apps.googleusercontent.com', // Placeholder
-      scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
-      callback: (tokenResponse: any) => {
-        if (tokenResponse && tokenResponse.access_token) {
-          setAccessToken(tokenResponse.access_token);
-          // Fetch user info for UI
-          fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-          })
-          .then(res => res.json())
-          .then(setUserData);
-        }
-      },
-    });
-    
-    if (client) {
-        client.requestAccessToken();
-    } else {
-        alert("Interactions are currently in 'Preview Mode'. Connect a valid Google Client ID to enable real interactions.");
-        // Mocking login for UI demo
-        setAccessToken("MOCK_TOKEN");
-        setUserData({ name: "Demo User", picture: null });
-    }
-  };
+  // Unified Reveal Animation Logic
+  useEffect(() => {
+    if (loading) return;
 
-  const handleLogout = () => {
-    setAccessToken(null);
-    setUserData(null);
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    // Select all reveal elements including newly rendered ones
+    const elements = document.querySelectorAll('.reveal');
+    elements.forEach(el => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [loading, activeTab, videos]);
+
+  const handleGoogleLogin = () => {
+    // Note: redirect_uri_mismatch is caused by the domain not being in the Google Cloud Console list.
+    // For this environment, we attempt a clean login but provide feedback.
+    try {
+      const client = (window as any).google?.accounts?.oauth2?.initTokenClient({
+        client_id: '1018368080946-t236rel6stk4m93cvjhpb8cikp1dstvd.apps.googleusercontent.com',
+        scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
+        callback: (tokenResponse: any) => {
+          if (tokenResponse?.access_token) {
+            setAccessToken(tokenResponse.access_token);
+            fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+            }).then(res => res.json()).then(setUserData);
+          }
+        },
+        error_callback: (err: any) => {
+          console.error("Login Error:", err);
+          alert("Login Failed: Likely a redirect_uri_mismatch. The current domain must be authorized in Google Cloud Console.");
+        }
+      });
+      client ? client.requestAccessToken() : alert("Google Identity script not loaded.");
+    } catch (e) {
+      alert("Social features unavailable in this session.");
+    }
   };
 
   const handleSubscribe = async () => {
-    if (!accessToken) {
-        handleGoogleLogin();
-        return;
-    }
+    if (!accessToken) return handleGoogleLogin();
     try {
-        await service.subscribe(PERSONAL_CHANNEL_ID);
-        setIsSubscribed(true);
-        alert("Subscribed successfully!");
-    } catch (e: any) {
-        console.error(e);
-        alert(e.message || "Subscription failed. Check permissions.");
+      await service.subscribe(PERSONAL_CHANNEL_ID);
+      setIsSubscribed(true);
+    } catch (e: any) { 
+      alert("Action failed: Ensure your Google Account is authorized for YouTube API operations."); 
     }
   };
 
@@ -130,181 +134,151 @@ export default function App() {
   }, [videos, activeTab]);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white selection:bg-red-500 selection:text-white">
-      {/* Premium Navigation */}
-      <nav className={`fixed top-0 z-50 w-full transition-all duration-500 ${scrolled ? 'bg-black/80 py-3 backdrop-blur-2xl border-b border-white/5' : 'bg-transparent py-8'}`}>
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-red-600 to-orange-600 shadow-2xl shadow-red-600/30">
-              <Youtube size={28} fill="white" strokeWidth={0} />
-            </div>
-            <div className="hidden flex-col sm:flex">
-              <span className="text-lg font-black tracking-tight leading-none uppercase">Creator</span>
-              <span className="text-[10px] font-bold tracking-[0.2em] text-red-500 uppercase">Portfolio</span>
-            </div>
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      {/* Editorial Navigation */}
+      <nav className="fixed top-0 z-[100] w-full px-4 sm:px-8 py-6 backdrop-blur-md bg-black/20">
+        <div className="flex items-center justify-between mx-auto max-w-[1600px]">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <span className="font-display text-xl sm:text-2xl font-black uppercase tracking-tighter cursor-pointer" onClick={() => window.scrollTo({top:0, behavior:'smooth'})}>
+              {channel?.title?.split(' ')[0] || 'Studio'} <span className="text-[#ccff00]">.</span>
+            </span>
+            <div className="hidden h-8 w-px bg-white/10 md:block"></div>
+            <span className="hidden text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-500 md:block">
+              Digital Portfolio // v1.0
+            </span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {userData ? (
-              <div className="flex items-center gap-4">
-                <div className="hidden flex-col items-end sm:flex">
-                  <span className="text-sm font-bold">{userData.name}</span>
-                  <button onClick={handleLogout} className="text-[10px] text-neutral-500 hover:text-red-500">Sign Out</button>
-                </div>
-                {userData.picture ? (
-                  <img src={userData.picture} className="h-10 w-10 rounded-full border border-white/10" alt="Profile" />
-                ) : (
-                  <div className="h-10 w-10 rounded-full bg-neutral-800 flex items-center justify-center"><User size={20}/></div>
-                )}
+              <div className="flex items-center gap-2 sm:gap-3 rounded-full border border-white/10 bg-white/5 p-1 pr-3 sm:pr-4">
+                <img src={userData.picture} className="h-6 w-6 sm:h-8 sm:h-8 rounded-full" alt="Profile" />
+                <span className="text-[10px] sm:text-xs font-bold truncate max-w-[80px] sm:max-w-[120px]">{userData.name}</span>
               </div>
             ) : (
-              <button 
-                onClick={handleGoogleLogin}
-                className="flex items-center gap-2 rounded-2xl bg-white/5 border border-white/10 px-6 py-2.5 text-sm font-bold hover:bg-white/10 transition-all"
-              >
-                <LogIn size={18} /> Sign In
+              <button onClick={handleGoogleLogin} className="group flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-widest hover:text-[#ccff00] transition-colors">
+                Connect <LogIn size={14} className="group-hover:translate-x-1 transition-transform" />
               </button>
             )}
-            
             <button 
               onClick={handleSubscribe}
-              className={`flex items-center gap-2 rounded-2xl px-8 py-3 text-sm font-black uppercase tracking-widest transition-all active:scale-95 ${
-                isSubscribed 
-                ? 'bg-neutral-800 text-neutral-400 border border-white/5' 
-                : 'bg-red-600 text-white shadow-xl shadow-red-600/20 hover:bg-red-500 hover:shadow-red-600/40'
+              className={`rounded-full px-5 sm:px-8 py-2 sm:py-2.5 text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+                isSubscribed ? 'bg-white/10 text-neutral-400' : 'btn-lime'
               }`}
             >
-              {isSubscribed ? <Bell size={18} /> : null}
-              {isSubscribed ? 'Subscribed' : 'Subscribe'}
+              {isSubscribed ? 'Subscribed' : 'Follow'}
             </button>
           </div>
         </div>
       </nav>
 
-      {/* Hero Header */}
-      <header className="relative flex min-h-[90vh] w-full flex-col items-center justify-center overflow-hidden">
-        {channel?.bannerImageUrl ? (
-          <div className="absolute inset-0 z-0">
-            <img 
-              src={channel.bannerImageUrl} 
-              className="h-full w-full object-cover opacity-40 brightness-50" 
-              alt="Banner" 
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/70 to-[#050505]" />
-          </div>
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 to-[#050505]" />
-        )}
-        
-        <div className="relative z-10 mx-auto max-w-5xl px-6 text-center">
-          {channel && (
-            <div className="animate-in fade-in zoom-in duration-1000 slide-in-from-top-10">
-              <div className="relative mx-auto mb-8 h-44 w-44 md:h-52 md:w-52">
-                <div className="absolute -inset-4 animate-pulse rounded-full bg-red-600/10 blur-3xl" />
-                <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-red-600 to-orange-500 p-1 shadow-2xl">
-                  <img 
-                    src={channel.thumbnails.high.url} 
-                    className="h-full w-full rounded-full border-4 border-[#050505] object-cover" 
-                    alt={channel.title} 
-                  />
-                </div>
-              </div>
-              
-              <h1 className="text-6xl font-black uppercase tracking-tighter md:text-8xl lg:text-9xl">
-                {channel.title}
-              </h1>
-              <div className="mt-4 flex items-center justify-center gap-4">
-                <p className="text-xl font-bold tracking-widest text-red-500 uppercase">{channel.handle}</p>
-                <div className="h-1.5 w-1.5 rounded-full bg-white/20"></div>
-                <span className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Media Producer</span>
-              </div>
-              
-              <div className="mt-12 flex flex-wrap justify-center gap-4">
-                <HeroStat icon={<Users size={20}/>} label="Audience" value={formatCount(channel.statistics.subscriberCount)} />
-                <HeroStat icon={<Eye size={20}/>} label="Reach" value={formatCount(channel.statistics.viewCount)} />
-                <HeroStat icon={<Video size={20}/>} label="Projects" value={formatCount(channel.statistics.videoCount)} />
-              </div>
-
-              <div className="mt-12 flex flex-col items-center gap-6 sm:flex-row sm:justify-center">
-                <button 
-                  onClick={() => {
-                    const el = document.getElementById('portfolio-grid');
-                    el?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="group flex items-center gap-3 rounded-2xl bg-white px-10 py-5 text-lg font-black text-black transition-all hover:scale-105 active:scale-95"
-                >
-                  <Play fill="black" size={24} /> View Gallery
-                </button>
-                <button 
-                  onClick={handleSubscribe}
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-10 py-5 text-lg font-black backdrop-blur-md transition-all hover:bg-white/10 active:scale-95"
-                >
-                  <Heart className="text-red-500" /> Support My Work
-                </button>
-              </div>
+      {/* Modern Split Hero */}
+      <header className="relative flex min-h-screen items-center px-4 sm:px-8 md:px-20 pt-20">
+        <div className="grid w-full gap-10 lg:gap-20 lg:grid-cols-12 max-w-[1600px] mx-auto">
+          <div className="flex flex-col justify-center lg:col-span-7 z-10">
+            <div className="reveal active flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#ccff00]">
+              <span className="h-px w-8 sm:w-12 bg-[#ccff00]"></span>
+              Professional Creator
             </div>
-          )}
-        </div>
-        
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce opacity-20">
-          <ChevronDown size={32} />
+            <h1 className="reveal active mt-6 sm:mt-10 font-display text-5xl sm:text-7xl md:text-8xl lg:text-[10rem] font-black uppercase leading-[0.9] tracking-tighter">
+              {channel?.title.split(' ')[0] || 'Creative'} <br/>
+              <span className="font-serif italic text-white/30">{channel?.title.split(' ').slice(1).join(' ') || 'Studio'}</span>
+            </h1>
+            <p className="reveal active mt-6 sm:mt-10 max-w-lg text-sm sm:text-lg font-medium leading-relaxed text-neutral-400">
+              Directing digital narratives and crafting high-impact visual content. Browse my collection of <span className="text-white">{channel?.statistics.videoCount}</span> curated productions.
+            </p>
+            <div className="reveal active mt-8 sm:mt-12 flex flex-wrap gap-4 sm:gap-6">
+              <button onClick={() => document.getElementById('work')?.scrollIntoView({behavior:'smooth'})} className="btn-lime px-8 sm:px-10 py-4 sm:py-5 rounded-none flex items-center gap-4 text-xs sm:text-base">
+                Explore Work <ArrowUpRight size={20} />
+              </button>
+              <a href={`https://youtube.com/channel/${PERSONAL_CHANNEL_ID}`} target="_blank" className="flex items-center gap-4 px-8 py-4 sm:py-5 text-xs sm:text-base font-black border border-white/10 hover:bg-white/5 transition-colors">
+                YouTube <Youtube size={20} />
+              </a>
+            </div>
+          </div>
+
+          <div className="reveal active relative flex items-center justify-center lg:col-span-5 order-first lg:order-last">
+             <div className="relative aspect-[4/5] sm:aspect-[3/4] w-full max-w-md overflow-hidden bg-neutral-900 group">
+                <div className="absolute inset-0 z-0 scale-110 blur-[100px] opacity-20 bg-gradient-to-br from-[#ccff00] to-red-500 animate-pulse"></div>
+                {channel?.bannerImageUrl ? (
+                    <img src={channel.bannerImageUrl} className="relative z-10 h-full w-full object-cover grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-1000" alt="Banner" />
+                ) : (
+                    <div className="h-full w-full bg-neutral-800" />
+                )}
+                <div className="absolute inset-0 z-20 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                <div className="absolute bottom-6 left-6 sm:bottom-10 sm:left-10 z-30">
+                  <div className="font-display text-3xl sm:text-4xl font-black uppercase tracking-tighter leading-none">
+                    Studio <br/> Profile
+                  </div>
+                </div>
+             </div>
+          </div>
         </div>
       </header>
 
-      {/* Grid Content */}
-      <section id="portfolio-grid" className="relative z-10 bg-[#050505] px-6 py-24">
-        <div className="mx-auto max-w-[1400px]">
-          {/* Navigation */}
-          <div className="mb-16 flex flex-col items-center justify-between gap-8 lg:flex-row">
-            <h2 className="text-4xl font-black uppercase tracking-tighter md:text-5xl">Digital Archive</h2>
-            <div className="flex flex-wrap justify-center gap-2 rounded-[2rem] border border-white/5 bg-white/5 p-2 backdrop-blur-xl">
-              <TabButton active={activeTab === 'home'} label="Collection" onClick={() => setActiveTab('home')} icon={<LayoutGrid size={18}/>} />
-              <TabButton active={activeTab === 'videos'} label="Main Films" onClick={() => setActiveTab('videos')} icon={<Play size={18}/>} />
-              <TabButton active={activeTab === 'shorts'} label="Short Form" onClick={() => setActiveTab('shorts')} icon={<Zap size={18}/>} />
-              <TabButton active={activeTab === 'about'} label="Vision" onClick={() => setActiveTab('about')} icon={<Info size={18}/>} />
-            </div>
-          </div>
+      {/* Floating Stats Bar */}
+      <div className="sticky top-24 z-40 mx-auto max-w-fit reveal mt-[-2rem] mb-20 px-4">
+        <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-12 rounded-2xl sm:rounded-full border border-white/5 bg-black/60 px-6 sm:px-12 py-4 sm:py-5 backdrop-blur-2xl">
+          <Stat icon={<Users size={16}/>} label="Audience" value={formatCount(channel?.statistics.subscriberCount)} />
+          <div className="hidden sm:block h-4 w-px bg-white/10"></div>
+          <Stat icon={<Eye size={16}/>} label="Reach" value={formatCount(channel?.statistics.viewCount)} />
+          <div className="hidden sm:block h-4 w-px bg-white/10"></div>
+          <Stat icon={<Monitor size={16}/>} label="Assets" value={channel?.statistics.videoCount} />
+        </div>
+      </div>
 
+      {/* Content Gallery */}
+      <section id="work" className="px-4 sm:px-8 md:px-20 py-20 sm:py-32 bg-[#080808]">
+        <div className="flex flex-col items-start lg:items-end justify-between gap-10 border-b border-white/5 pb-12 sm:pb-20 lg:flex-row max-w-[1600px] mx-auto">
+          <div className="space-y-4">
+            <h2 className="reveal font-display text-4xl sm:text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none">
+              Featured <br/> <span className="text-[#ccff00]">Productions</span>
+            </h2>
+            <p className="reveal text-neutral-500 text-xs sm:text-sm font-bold tracking-[0.2em] uppercase">Curated Gallery // {filteredVideos.length} Items</p>
+          </div>
+          
+          <div className="reveal flex flex-wrap gap-2 sm:gap-4 bg-white/5 p-1 rounded-sm">
+            <TabBtn active={activeTab === 'home'} label="Mosaic" onClick={() => setActiveTab('home')} icon={<LayoutGrid size={14}/>}/>
+            <TabBtn active={activeTab === 'videos'} label="Featured" onClick={() => setActiveTab('videos')} icon={<Play size={14}/>}/>
+            <TabBtn active={activeTab === 'shorts'} label="Quick Cuts" onClick={() => setActiveTab('shorts')} icon={<Zap size={14}/>}/>
+            <TabBtn active={activeTab === 'about'} label="Manifesto" onClick={() => setActiveTab('about')} icon={<Info size={14}/>}/>
+          </div>
+        </div>
+
+        <div className="mt-12 sm:mt-20 max-w-[1600px] mx-auto min-h-[400px]">
           {loading ? (
-            <div className="flex h-96 flex-col items-center justify-center gap-4">
-              <div className="h-14 w-14 animate-spin rounded-full border-4 border-red-600 border-t-transparent"></div>
-              <p className="font-bold uppercase tracking-widest text-red-500 text-xs">Loading Studio Assets...</p>
-            </div>
-          ) : error ? (
-            <div className="rounded-[3rem] border border-red-500/20 bg-red-500/5 p-16 text-center">
-              <h2 className="text-2xl font-black uppercase">Initialization Error</h2>
-              <p className="mt-2 text-neutral-400">{error}</p>
-            </div>
-          ) : (
-            <div className="animate-in fade-in slide-in-from-bottom-10 duration-1000">
-              {activeTab === 'about' ? (
-                <div className="grid gap-16 lg:grid-cols-12">
-                  <div className="lg:col-span-8">
-                    <h3 className="mb-6 text-3xl font-black uppercase">Creative Vision</h3>
-                    <div className="rounded-[2.5rem] border border-white/5 bg-white/5 p-10 text-xl font-medium leading-relaxed text-neutral-300">
-                      {channel?.description || "Visual artist and digital storyteller creating immersive video content."}
-                    </div>
-                  </div>
-                  <div className="lg:col-span-4">
-                    <h3 className="mb-6 text-3xl font-black uppercase">Presence</h3>
-                    <div className="space-y-4">
-                      <MetaInfo label="Active Since" value={new Date(channel?.publishedAt || '').getFullYear().toString()} />
-                      <MetaInfo label="Verified" value="Yes" color="text-green-500" />
-                      <MetaInfo label="Location" value="Global" />
-                      <div className="mt-8 overflow-hidden rounded-[2.5rem] border border-white/5 bg-gradient-to-br from-red-600 to-orange-600 p-8 text-center shadow-2xl">
-                        <p className="text-xs font-black uppercase tracking-widest text-white/80">Collaborations</p>
-                        <button className="mt-4 w-full rounded-2xl bg-white py-4 font-black text-black transition-transform hover:scale-105 active:scale-95">
-                          Reach Out
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+             <div className="flex h-64 items-center justify-center">
+               <div className="h-10 w-10 border-4 border-[#ccff00] border-t-transparent animate-spin rounded-full"></div>
+             </div>
+          ) : activeTab === 'about' ? (
+             <div className="reveal grid gap-10 lg:gap-20 lg:grid-cols-2">
+                <div className="font-serif text-3xl sm:text-4xl md:text-6xl italic leading-tight text-white/60">
+                  "{channel?.description?.slice(0, 100)}..."
                 </div>
-              ) : (
-                <div className={`grid gap-x-8 gap-y-16 ${activeTab === 'shorts' ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
-                  {filteredVideos.map(video => (
-                    <VideoCard key={video.id} video={video} onClick={setSelectedVideo} />
-                  ))}
+                <div className="space-y-8 sm:space-y-12">
+                   <p className="text-base sm:text-xl leading-relaxed text-neutral-400">
+                     {channel?.description}
+                   </p>
+                   <div className="grid grid-cols-2 gap-8 pt-10 border-t border-white/5">
+                      <div className="space-y-2">
+                         <span className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Active Since</span>
+                         <p className="text-lg sm:text-xl font-bold">{new Date(channel?.publishedAt || '').getFullYear()}</p>
+                      </div>
+                      <div className="space-y-2">
+                         <span className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Region</span>
+                         <p className="text-lg sm:text-xl font-bold">Global Presence</p>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          ) : (
+            <div className={`grid gap-x-6 sm:gap-x-12 gap-y-12 sm:gap-y-20 ${activeTab === 'shorts' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
+              {filteredVideos.length > 0 ? filteredVideos.map((video, idx) => (
+                <div key={`${video.id}-${activeTab}`} className="reveal opacity-0" style={{transitionDelay: `${(idx % 6) * 100}ms`}}>
+                  <VideoCard video={video} onClick={setSelectedVideo} />
+                </div>
+              )) : (
+                <div className="col-span-full py-20 text-center text-neutral-600 uppercase font-black tracking-widest">
+                  No productions found in this category
                 </div>
               )}
             </div>
@@ -312,7 +286,7 @@ export default function App() {
         </div>
       </section>
 
-      {/* Video Interaction Modal */}
+      {/* Video Modal Interface */}
       <VideoModal 
         video={selectedVideo} 
         onClose={() => setSelectedVideo(null)} 
@@ -321,56 +295,46 @@ export default function App() {
         onLogin={handleGoogleLogin}
       />
 
-      <footer className="border-t border-white/5 py-20 text-center">
-        <div className="mx-auto max-w-4xl px-6">
-          <div className="mb-8 flex justify-center gap-6">
-             <a href={`https://youtube.com/channel/${PERSONAL_CHANNEL_ID}`} target="_blank" className="text-neutral-500 hover:text-red-500 transition-colors">
-               <Youtube size={28} />
-             </a>
-             <a href="#" className="text-neutral-500 hover:text-white transition-colors">
-               <ExternalLink size={28} />
-             </a>
-          </div>
-          <p className="text-sm font-black uppercase tracking-widest text-white/20">© 2024 {channel?.title} Portfolio</p>
+      <footer className="border-t border-white/5 px-4 sm:px-8 md:px-20 py-16 sm:py-20 bg-black">
+        <div className="flex flex-col items-center justify-between gap-10 lg:flex-row max-w-[1600px] mx-auto">
+           <div className="font-display text-xl sm:text-2xl font-black uppercase tracking-tighter">
+             {channel?.title || 'Studio'} <span className="text-[#ccff00]">©</span>
+           </div>
+           <div className="flex gap-8 sm:gap-12 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+             <a href="#" className="hover:text-white transition-colors">Social</a>
+             <a href={`https://youtube.com/channel/${PERSONAL_CHANNEL_ID}`} target="_blank" className="hover:text-[#ccff00] transition-colors">YouTube</a>
+             <a href="#" className="hover:text-white transition-colors">Connect</a>
+           </div>
+           <p className="text-[9px] font-bold uppercase tracking-widest text-neutral-700 text-center">
+             Built with YouTube API v3 // Optimized for Creative Professionals
+           </p>
         </div>
       </footer>
     </div>
   );
 }
 
-// Internal Helper Components
-function HeroStat({ icon, label, value }: { icon: React.ReactNode, label: string, value: string }) {
+function Stat({ icon, label, value }: { icon: React.ReactNode, label: string, value: any }) {
   return (
-    <div className="flex flex-col items-center rounded-2xl border border-white/5 bg-white/5 px-8 py-5 backdrop-blur-xl">
-      <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
-        {icon} {label}
+    <div className="flex items-center gap-3">
+      <div className="text-[#ccff00] shrink-0">{icon}</div>
+      <div className="flex flex-col">
+        <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-neutral-500 leading-none mb-1">{label}</span>
+        <span className="text-xs sm:text-sm font-black text-white">{value || '...'}</span>
       </div>
-      <div className="text-3xl font-black">{value}</div>
     </div>
   );
 }
 
-function TabButton({ active, label, onClick, icon }: { active: boolean, label: string, onClick: () => void, icon: React.ReactNode }) {
+function TabBtn({ active, label, onClick, icon }: { active: boolean, label: string, onClick: () => void, icon: React.ReactNode }) {
   return (
     <button 
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-[1.5rem] px-8 py-3 text-xs font-black uppercase tracking-widest transition-all ${
-        active 
-        ? 'bg-red-600 text-white shadow-xl shadow-red-600/20' 
-        : 'text-neutral-500 hover:text-white hover:bg-white/5'
+      className={`flex items-center gap-2 sm:gap-3 rounded-none border border-transparent px-4 sm:px-8 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${
+        active ? 'bg-[#ccff00] text-black' : 'text-neutral-500 hover:text-white hover:bg-white/5'
       }`}
     >
-      {icon}
-      {label}
+      {icon} {label}
     </button>
-  );
-}
-
-function MetaInfo({ label, value, color }: { label: string, value: string, color?: string }) {
-  return (
-    <div className="flex justify-between rounded-2xl border border-white/5 bg-white/5 p-5 backdrop-blur-md">
-      <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">{label}</span>
-      <span className={`text-xs font-black uppercase tracking-widest ${color || 'text-white'}`}>{value}</span>
-    </div>
   );
 }
